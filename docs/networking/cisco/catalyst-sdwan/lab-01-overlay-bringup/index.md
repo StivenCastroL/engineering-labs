@@ -54,6 +54,10 @@ Los WAN Edge establecen túneles seguros sobre una red de transporte (underlay) 
 
 La siguiente topología representa el entorno desplegado en EVE-NG para validar el funcionamiento básico del fabric Cisco Catalyst SD-WAN.
 
+## Topología del laboratorio en EVE-NG
+
+![SD-WAN EVE-NG Topology](../../../../../diagrams/networking/cisco/catalyst-sdwan/lab-01/sdwan-lab01-eve-ng-topology.png)
+
 El laboratorio incluye los componentes de control (vManage, vBond y vSmart), dos routers WAN Edge y dos redes LAN simulando dos sucursales conectadas a través del overlay SD-WAN.
 
 ## Componentes
