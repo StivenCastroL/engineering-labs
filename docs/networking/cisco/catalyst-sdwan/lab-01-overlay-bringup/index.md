@@ -79,7 +79,87 @@ El laboratorio incluye los componentes de control (vManage, vBond y vSmart), dos
 | VPN 1 | LAN Site 1 |
 | VPN 1 | LAN Site 2 |
 
-# 4. Hipótesis
+---
+
+# 4. Topology and Addressing Plan
+
+## 4.1 System IP y Site ID
+
+| Nodo | System-IP | Site-ID | Rol |
+|-----|-----------|--------|------|
+| vManage | 1.1.1.1 | 1 | Management |
+| vBond | 1.1.1.2 | 1 | Orchestrator |
+| vSmart | 1.1.1.3 | 1 | Control Plane |
+| Edge-1 | 1.1.1.11 | 100 | Branch Site 1 |
+| Edge-2 | 1.1.1.12 | 200 | Branch Site 2 |
+
+---
+
+## 4.2 Management Network (VPN 512)
+
+| Dispositivo | Interfaz | Dirección IP | Gateway |
+|-------------|-----------|-------------|---------|
+| vManage | eth1 | 10.30.30.45 | 10.30.30.1 |
+| vBond | eth1 | 10.30.30.46 | 10.30.30.1 |
+| vSmart | eth1 | 10.30.30.47 | 10.30.30.1 |
+
+Red de gestión:
+
+10.30.30.0/24
+
+Uso: red de administración de los control components.
+
+---
+
+## 4.3 Transport Network (VPN 0)
+
+| Dispositivo | Interfaz | Dirección IP |
+|-------------|-----------|-------------|
+| vManage | eth0 | 10.10.10.1 |
+| vBond | eth0 | 10.10.10.2 |
+| vSmart | eth0 | 10.10.10.3 |
+| Edge-1 | Gi1 | 10.10.10.11 |
+| Edge-2 | Gi1 | 10.10.10.12 |
+
+Gateway del transporte:
+
+10.10.10.254
+
+Red de transporte:
+
+10.10.10.0/24
+
+Uso: underlay transport utilizado para formar el overlay SD-WAN.
+
+---
+
+## 4.4 Service VPN (LAN Sites)
+
+### Site 1
+
+| Dispositivo | Interfaz | Red |
+|-------------|-----------|------|
+| Edge-1 | Gi2 | 192.168.10.0/24 |
+
+---
+
+### Site 2
+
+| Dispositivo | Interfaz | Red |
+|-------------|-----------|------|
+| Edge-2 | Gi2 | 192.168.20.0/24 |
+
+---
+
+## 4.5 VPN Segmentación
+
+| VPN | Uso |
+|----|----|
+| VPN 512 | Management plane |
+| VPN 0 | Transport underlay |
+| VPN 1 | Service VPN (LAN usuarios) |
+
+# 5. Hipótesis
 
 Si:
 
@@ -93,9 +173,9 @@ los routers WAN Edge se incorporarán correctamente al fabric SD-WAN y se establ
 
 ---
 
-# 5. Procedimiento
+# 6. Procedimiento
 
-## 5.1 Despliegue del entorno en EVE-NG
+## 6.1 Despliegue del entorno en EVE-NG
 
 Se despliegan los siguientes nodos:
 
@@ -107,7 +187,7 @@ Se despliegan los siguientes nodos:
 
 ---
 
-## 5.2 Configuración inicial de control components
+## 6.2 Configuración inicial de control components
 
 Configuración de:
 
@@ -119,25 +199,25 @@ Configuración de:
 
 ---
 
-## 5.3 Verificación de reachability
+## 6.3 Verificación de reachability
 
 Validar conectividad IP entre todos los control components.
 
 ---
 
-## 5.4 Incorporación de WAN Edge
+## 6.4 Incorporación de WAN Edge
 
 Los dispositivos WAN Edge se registran en el sistema y son autorizados.
 
 ---
 
-## 5.5 Aplicación de configuración
+## 6.5 Aplicación de configuración
 
 Se aplica configuración básica de servicio para permitir conectividad entre LANs.
 
 ---
 
-# 6. Validaciones técnicas
+# 7. Validaciones técnicas
 
 Las validaciones incluyen:
 
@@ -148,7 +228,7 @@ Las validaciones incluyen:
 
 ---
 
-# 7. Resultados obtenidos
+# 8. Resultados obtenidos
 
 El sistema SD-WAN se levantó correctamente y se verificó conectividad entre:
 
@@ -159,13 +239,13 @@ a través del overlay SD-WAN.
 
 ---
 
-# 8. Problemas encontrados
+# 9. Problemas encontrados
 
 (Se documentarán aquí los errores encontrados durante el laboratorio.)
 
 ---
 
-# 9. Lecciones aprendidas
+# 10. Lecciones aprendidas
 
 Este laboratorio permitió comprender:
 
@@ -175,7 +255,7 @@ Este laboratorio permitió comprender:
 
 ---
 
-# 10. Mejores prácticas
+# 11. Mejores prácticas
 
 - Validar siempre conectividad underlay antes de iniciar onboarding.
 - Mantener consistencia en `org-name`, `site-id` y `system-ip`.
@@ -183,7 +263,7 @@ Este laboratorio permitió comprender:
 
 ---
 
-# 11. Próximos experimentos
+# 12. Próximos experimentos
 
 **Lab 02**
 
