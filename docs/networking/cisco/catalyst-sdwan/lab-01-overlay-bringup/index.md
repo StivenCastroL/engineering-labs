@@ -8,7 +8,7 @@
 | Tecnología | Cisco Catalyst SD-WAN |
 | Nivel | Intermedio |
 | Entorno | EVE-NG |
-| Fecha | 2026-03-13 |
+| Fecha | YYYY-MM-DD |
 
 ---
 
@@ -44,29 +44,28 @@ Los componentes principales del sistema son:
 
 Los WAN Edge establecen túneles seguros sobre una red de transporte (underlay) para formar el **overlay SD-WAN**.
 
+Fuentes oficiales:
+
+- https://www.cisco.com/c/en/us/td/docs/routers/sdwan/configuration/sdwan-xe-gs-book/cisco-sd-wan-overlay-network-bringup.html
+- https://www.cisco.com/c/en/us/td/docs/routers/sdwan/configuration/system-interface/systems-interfaces-book.html
+
 ---
 
 # 3. Arquitectura del laboratorio
 
 ## Topología del laboratorio
 
-![SD-WAN Lab Topology](../../../../../diagrams/networking/cisco/catalyst-sdwan/lab-01/sdwan-lab01-overlay-topology.png)
+![SD-WAN Overlay Topology](../../../../../diagrams/networking/cisco/catalyst-sdwan/lab-01/sdwan-lab01-overlay-topology.png)
 
 La siguiente topología representa el entorno desplegado en EVE-NG para validar el funcionamiento básico del fabric Cisco Catalyst SD-WAN.
-
-## Topología del laboratorio en EVE-NG
-
-![SD-WAN EVE-NG Topology](../../../../../diagrams/networking/cisco/catalyst-sdwan/lab-01/sdwan-lab01-eve-ng-topology.png)
-
-El laboratorio incluye los componentes de control (vManage, vBond y vSmart), dos routers WAN Edge y dos redes LAN simulando dos sucursales conectadas a través del overlay SD-WAN.
 
 ## Componentes
 
 | Nodo | Rol |
 |-----|-----|
-| Manager | Gestión |
-| Validator | Orquestación |
-| Controller | Plano de control |
+| vManage | Gestión |
+| vBond | Orchestrator |
+| vSmart | Control plane |
 | Edge-1 | Sucursal 1 |
 | Edge-2 | Sucursal 2 |
 
@@ -141,8 +140,6 @@ Uso: underlay transport utilizado para formar el overlay SD-WAN.
 |-------------|-----------|------|
 | Edge-1 | Gi2 | 192.168.10.0/24 |
 
----
-
 ### Site 2
 
 | Dispositivo | Interfaz | Red |
@@ -159,65 +156,78 @@ Uso: underlay transport utilizado para formar el overlay SD-WAN.
 | VPN 0 | Transport underlay |
 | VPN 1 | Service VPN (LAN usuarios) |
 
-# 5. Hipótesis
+---
 
-Si:
+# 5. Procedimiento
 
-- existe conectividad IP en el underlay
-- los control components están correctamente configurados
-- los WAN Edge son autorizados
+## 5.1 Deployment Sequence
 
-entonces:
+De acuerdo con la documentación oficial de Cisco, el proceso de inicialización del overlay SD-WAN sigue una secuencia específica de arranque de los control components.
 
-los routers WAN Edge se incorporarán correctamente al fabric SD-WAN y se establecerá conectividad entre las redes LAN de cada sitio.
+Fuente:
+
+https://www.cisco.com/c/en/us/td/docs/routers/sdwan/configuration/sdwan-xe-gs-book/cisco-sd-wan-overlay-network-bringup.html
+
+Orden recomendado de despliegue:
+
+1. Start SD-WAN Manager (vManage)
+2. Start SD-WAN Validator (vBond)
+3. Start SD-WAN Controller (vSmart)
+4. Onboard WAN Edge routers
+
+Este orden permite que los componentes de control se autentiquen entre sí antes de que los routers WAN Edge intenten unirse al fabric SD-WAN.
 
 ---
 
-# 6. Procedimiento
+## 5.2 vManage Bootstrap Configuration
 
-## 6.1 Despliegue del entorno en EVE-NG
+El primer componente desplegado en el laboratorio es el **Cisco SD-WAN Manager (vManage)**.
 
-Se despliegan los siguientes nodos:
+Según la documentación oficial de Cisco, todo dispositivo SD-WAN requiere al menos tres bloques de configuración inicial:
 
-- Manager
-- Validator
-- Controller
-- Edge-1
-- Edge-2
+- system
+- vpn 0
+- vpn 512
+
+Fuente:
+
+https://www.cisco.com/c/en/us/td/docs/routers/sdwan/configuration/system-interface/systems-interfaces-book.html
+
+### Parámetros del sistema
+
+| Parámetro | Valor |
+|----------|------|
+| Hostname | vmanage |
+| System IP | 1.1.1.1 |
+| Site ID | 1 |
+| Organization Name | Lab_Stiven_SDWAN |
+| vBond Address | 10.10.10.2 |
+
+### Validaciones iniciales
+
+Verificar estado del sistema:
+
+
+show system status
+
+
+Verificar conectividad hacia la red de transporte:
+
+
+ping 10.10.10.254
+
+
+Verificar conectividad hacia la red de gestión:
+
+
+ping 10.30.30.1
+
+
+Estas validaciones confirman que el dispositivo tiene conectividad en el underlay antes de continuar con el despliegue del resto de control components.
 
 ---
 
-## 6.2 Configuración inicial de control components
-
-Configuración de:
-
-- system-ip
-- site-id
-- org-name
-- VPN 512
-- VPN 0
-
----
-
-## 6.3 Verificación de reachability
-
-Validar conectividad IP entre todos los control components.
-
----
-
-## 6.4 Incorporación de WAN Edge
-
-Los dispositivos WAN Edge se registran en el sistema y son autorizados.
-
----
-
-## 6.5 Aplicación de configuración
-
-Se aplica configuración básica de servicio para permitir conectividad entre LANs.
-
----
-
-# 7. Validaciones técnicas
+# 6. Validaciones técnicas
 
 Las validaciones incluyen:
 
@@ -228,7 +238,7 @@ Las validaciones incluyen:
 
 ---
 
-# 8. Resultados obtenidos
+# 7. Resultados obtenidos
 
 El sistema SD-WAN se levantó correctamente y se verificó conectividad entre:
 
@@ -239,13 +249,13 @@ a través del overlay SD-WAN.
 
 ---
 
-# 9. Problemas encontrados
+# 8. Problemas encontrados
 
 (Se documentarán aquí los errores encontrados durante el laboratorio.)
 
 ---
 
-# 10. Lecciones aprendidas
+# 9. Lecciones aprendidas
 
 Este laboratorio permitió comprender:
 
@@ -255,16 +265,14 @@ Este laboratorio permitió comprender:
 
 ---
 
-# 11. Mejores prácticas
+# 10. Mejores prácticas
 
 - Validar siempre conectividad underlay antes de iniciar onboarding.
-- Mantener consistencia en `org-name`, `site-id` y `system-ip`.
+- Mantener consistencia en `organization-name`, `site-id` y `system-ip`.
 - Verificar reachability entre control components antes de incorporar edges.
 
 ---
 
-# 12. Próximos experimentos
+# 11. Próximos experimentos
 
-**Lab 02**
-
-Templates y automatización de configuración en Cisco Catalyst SD-WAN.
+Lab 02 – Templates y automatización de configuración en Cisco Catalyst SD-WAN.
