@@ -8,7 +8,7 @@
 | Tecnología | Cisco Catalyst SD-WAN |
 | Nivel | Intermedio |
 | Entorno | EVE-NG |
-| Fecha | YYYY-MM-DD |
+| Fecha | 2026-03-14 |
 
 ---
 
