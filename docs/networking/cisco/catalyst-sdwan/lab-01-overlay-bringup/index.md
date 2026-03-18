@@ -39,15 +39,12 @@ Cisco Catalyst SD-WAN se basa en una arquitectura centralizada que separa el pla
 | SD-WAN Controller | vSmart | Plano de control. Distribuye rutas vía OMP y aplica políticas |
 | WAN Edge | cEdge / vEdge | Routers de sucursal. Forman los túneles IPsec del data plane |
 
-!!! note "Nomenclatura"
-    Cisco migró oficialmente a los nombres "SD-WAN Manager", "SD-WAN Validator" y "SD-WAN Controller" a partir de la versión 20.x. Los nombres legacy (vManage, vBond, vSmart) siguen siendo de uso común en la industria y aparecen en la CLI. Este documento usa la nomenclatura oficial y referencia los nombres legacy cuando es necesario para claridad.
-
 ### Flujo de autenticación del overlay bringup
 
 El proceso de bringup del overlay sigue esta secuencia:
 
 1. El WAN Edge arranca y contacta al **SD-WAN Validator** (vBond) en VPN 0
-2. El Validator autentica al WAN Edge mediante certificados y valida el `organization-name`
+2. El Validator autentica al WAN Edge mediante certificados y valida el organization-name
 3. El Validator informa al WAN Edge las direcciones de **SD-WAN Manager** y **SD-WAN Controller**
 4. El WAN Edge establece túneles **DTLS/TLS** hacia el Manager y el Controller
 5. El Controller establece sesiones **OMP** con el WAN Edge y distribuye rutas del service VPN
@@ -85,9 +82,6 @@ Este flujo es el núcleo de lo que este laboratorio valida.
 | VPN 512 | Management plane | Red de gestión de los control components |
 | VPN 0 | Transport underlay | Red de transporte para formar el overlay |
 | VPN 1 | Service VPN | Tráfico de usuarios (LAN de cada site) |
-
-!!! info "Sobre VPN 1"
-    Ambos sites utilizan el mismo VPN ID (VPN 1) para el service VPN, pero con subnets diferentes (192.168.10.0/24 y 192.168.20.0/24). Esto es el comportamiento estándar de segmentación SD-WAN: el VPN ID identifica el segmento lógico, no la subnet específica.
 
 ---
 
@@ -132,13 +126,13 @@ Este flujo es el núcleo de lo que este laboratorio valida.
 
 ## 5. Hipótesis
 
-> Si todos los control components (SD-WAN Manager, Validator y Controller) comparten el mismo `organization-name` y tienen reachability entre sí en VPN 0, entonces:
->
-> 1. Los control connections DTLS/TLS se establecerán entre todos los componentes de forma automática
-> 2. Los WAN Edge routers completarán el proceso de autenticación vía el Validator
-> 3. Los WAN Edge establecerán sesiones OMP con el Controller
-> 4. Se formarán túneles IPsec BFD entre los WAN Edge sin necesidad de políticas manuales
-> 5. Las rutas del service VPN (VPN 1) se propagarán vía OMP, permitiendo conectividad entre 192.168.10.0/24 y 192.168.20.0/24
+Si todos los control components (SD-WAN Manager, Validator y Controller) comparten el mismo organization-name y tienen reachability entre sí en VPN 0, entonces:
+
+1. Los control connections DTLS/TLS se establecerán entre todos los componentes de forma automática
+2. Los WAN Edge routers completarán el proceso de autenticación vía el Validator
+3. Los WAN Edge establecerán sesiones OMP con el Controller
+4. Se formarán túneles IPsec BFD entre los WAN Edge sin necesidad de políticas manuales
+5. Las rutas del service VPN (VPN 1) se propagarán vía OMP, permitiendo conectividad entre 192.168.10.0/24 y 192.168.20.0/24
 
 ---
 
@@ -155,11 +149,9 @@ De acuerdo con la documentación oficial de Cisco, el overlay bringup sigue esta
 
 Este orden permite que los control components se autentiquen entre sí antes de que los WAN Edge intenten unirse al fabric.
 
-> **Fuente:** [Cisco SD-WAN Overlay Network Bring-Up](https://www.cisco.com/c/en/us/td/docs/routers/sdwan/configuration/sdwan-xe-gs-book/cisco-sd-wan-overlay-network-bringup.html)
-
 ### 6.2 SD-WAN Manager bootstrap
 
-El primer componente desplegado es el SD-WAN Manager. Todo dispositivo SD-WAN requiere al menos tres bloques de configuración inicial: `system`, `vpn 0` y `vpn 512`.
+El primer componente desplegado es el SD-WAN Manager. Todo dispositivo SD-WAN requiere al menos tres bloques de configuración inicial: system, vpn 0 y vpn 512.
 
 #### Parámetros del sistema
 
@@ -171,27 +163,16 @@ El primer componente desplegado es el SD-WAN Manager. Todo dispositivo SD-WAN re
 | Organization Name | Lab_Stiven_SDWAN |
 | vBond Address | 10.10.10.2 |
 
-#### Configuración
-
-```
-! TODO: Pegar configuración real del lab
-```
-
 #### Validaciones del Manager
-
 ```
 show system status
 ```
-
 ```
 ping 10.10.10.254
 ```
-
 ```
 ping 10.30.30.1
 ```
-
-Estas validaciones confirman que el Manager tiene conectividad en el underlay antes de continuar con el despliegue.
 
 ### 6.3 SD-WAN Validator bootstrap
 
@@ -205,11 +186,11 @@ Estas validaciones confirman que el Manager tiene conectividad en el underlay an
 
 <!-- TODO: Documentar verificación de control connections entre los tres componentes -->
 
-### 6.6 WAN Edge onboarding — Edge-1
+### 6.6 WAN Edge onboarding - Edge-1
 
 <!-- TODO: Documentar onboarding de Edge-1 -->
 
-### 6.7 WAN Edge onboarding — Edge-2
+### 6.7 WAN Edge onboarding - Edge-2
 
 <!-- TODO: Documentar onboarding de Edge-2 -->
 
@@ -217,33 +198,27 @@ Estas validaciones confirman que el Manager tiene conectividad en el underlay an
 
 ## 7. Validaciones técnicas
 
-Las siguientes validaciones deben ejecutarse para confirmar que el overlay está operativo:
-
 ### Control plane
 
 | Comando | Qué valida |
 |---------|-----------|
-| `show control connections` | Túneles DTLS/TLS entre todos los componentes |
-| `show control local-properties` | Certificados, serial number, organization-name |
-| `show omp peers` | Sesiones OMP entre WAN Edges y Controller |
-| `show omp routes` | Rutas del service VPN aprendidas vía OMP |
+| show control connections | Túneles DTLS/TLS entre todos los componentes |
+| show control local-properties | Certificados, serial number, organization-name |
+| show omp peers | Sesiones OMP entre WAN Edges y Controller |
+| show omp routes | Rutas del service VPN aprendidas vía OMP |
 
 ### Data plane
 
 | Comando | Qué valida |
 |---------|-----------|
-| `show bfd sessions` | Túneles BFD entre WAN Edges |
-| `show tunnel statistics` | Estado y estadísticas de los túneles IPsec |
+| show bfd sessions | Túneles BFD entre WAN Edges |
+| show tunnel statistics | Estado y estadísticas de los túneles IPsec |
 
 ### Conectividad end-to-end
 
 | Comando | Qué valida |
 |---------|-----------|
-| `ping vrf 1 192.168.20.1 source 192.168.10.1` | Conectividad entre sites a través del overlay |
-
-### Outputs
-
-<!-- TODO: Pegar outputs reales de cada comando durante la ejecución del lab -->
+| ping vrf 1 192.168.20.1 source 192.168.10.1 | Conectividad entre sites a través del overlay |
 
 ---
 
@@ -255,28 +230,22 @@ Las siguientes validaciones deben ejecutarse para confirmar que el overlay está
 
 ## 9. Problemas encontrados
 
-<!-- TODO: Para cada problema documentar:
-- Descripción del problema
-- Síntoma observado
-- Causa raíz
-- Solución aplicada
-- Comando o output que confirmó la resolución
--->
+<!-- TODO: Documentar problemas, causa raíz y solución -->
 
 ---
 
 ## 10. Lecciones aprendidas
 
-<!-- TODO: Documentar lecciones específicas derivadas de ESTE lab, no conceptos genéricos -->
+<!-- TODO: Documentar lecciones específicas de este lab -->
 
 ---
 
 ## 11. Mejores prácticas
 
 - Validar conectividad underlay (VPN 0) en cada componente antes de iniciar el onboarding
-- Mantener consistencia estricta en `organization-name` entre todos los componentes — una discrepancia impide la formación de control connections
+- Mantener consistencia estricta en organization-name entre todos los componentes
 - Verificar reachability entre control components antes de incorporar WAN Edges
-- Seguir siempre la secuencia de despliegue: Manager → Validator → Controller → Edges
+- Seguir siempre la secuencia de despliegue: Manager, Validator, Controller, Edges
 
 ---
 
