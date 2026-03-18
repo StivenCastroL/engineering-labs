@@ -1,0 +1,57 @@
+site_name: Engineering Labs
+site_description: Laboratorio personal de experimentación técnica
+site_author: Stiven Castro L.
+
+repo_url: https://github.com/StivenCastroL/engineering-labs
+repo_name: StivenCastroL/engineering-labs
+
+theme:
+  name: material
+  language: es
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Cambiar a modo oscuro
+    - scheme: slate
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Cambiar a modo claro
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+
+nav:
+  - Home: index.md
+  - Networking:
+      - networking/index.md
+      - Cisco Catalyst SD-WAN:
+          - networking/cisco/catalyst-sdwan/index.md
+          - "Lab 01 - Overlay Bring-up": networking/cisco/catalyst-sdwan/lab-01-overlay-bringup/index.md
+  - Infrastructure:
+      - infrastructure/index.md
+  - Security:
+      - security/index.md
+  - AI:
+      - ai/index.md
