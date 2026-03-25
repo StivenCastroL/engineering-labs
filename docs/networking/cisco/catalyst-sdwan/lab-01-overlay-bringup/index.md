@@ -10,7 +10,7 @@
 | Nivel | Intermedio |
 | Entorno | EVE-NG |
 | Fecha inicio | 2026-03-14 |
-| Estado | En progreso — Control plane operativo, onboarding de WAN Edges bloqueado por incompatibilidad de imagen |
+| Estado | En progreso — Control plane operativo, WAN Edge onboarding bloqueado (ver sección 6.8) |
 
 ---
 
@@ -438,70 +438,74 @@ vbond   dtls 1.1.1.2         0          0      10.10.10.2          12346 up    0
 
 **Hipótesis #1 validada:** Los control connections DTLS se establecieron automáticamente entre los control components.
 
-### 6.8 WAN Edge onboarding (bloqueado — incompatibilidad de imagen)
+### 6.8 WAN Edge onboarding (bloqueado — múltiples problemas con imágenes C8000v)
 
-#### Imagen original: catc8k-17.18.01a
+#### Imagen 1: catc8k-17.18.01a — No bootea
 
 La primera imagen desplegada para los WAN Edges fue `catc8k-17.18.01a`. Los nodos no booteaban — la consola se quedaba en blanco y el proceso QEMU consumía 99% CPU con solo 65 MB de RAM (indicando que la VM nunca arrancaba el OS). El problema era doble:
 
 1. El template de EVE-NG asignaba **qemu-4.1.0** a los nodos catc8k
-2. La imagen 17.18 no era compatible con esa versión de QEMU
+2. La imagen 17.18 no era compatible con QEMU — se quedaba en `Booting from Hard Disk...` incluso con qemu-8.2.1
 
-Se probó con qemu-8.2.1 manualmente y la imagen mostraba `Booting from Hard Disk...` pero no avanzaba — la imagen en sí era incompatible.
+#### Imagen 2: catc8k-17.15.04c — Bootea pero config no persiste
 
-#### Imagen reemplazada: catc8k-17.15.04c
+Se descargó `c8000v-universalk9_16G_serial.17.15.04c.qcow2` (variante Serial, 16G, no-EFI, QCOW2 nativo para KVM). Se actualizaron los templates de QEMU en EVE-NG a versión 8.2.1 y se recrearon los nodos.
 
-Se descargó la imagen `c8000v-universalk9_16G_serial.17.15.04c.qcow2` desde el portal de Cisco (variante Serial, 16G, no-EFI, QCOW2 nativo para KVM).
-
-Para que EVE-NG la reconociera:
-```bash
-mkdir -p /opt/unetlab/addons/qemu/catc8k-17.15.04c
-mv c8000v-universalk9_16G_serial.17.15.04c.qcow2 /opt/unetlab/addons/qemu/catc8k-17.15.04c/virtioa.qcow2
-/opt/unetlab/wrappers/unl_wrapper -a fixpermissions
-```
-
-Adicionalmente, fue necesario actualizar la versión de QEMU en los templates de EVE-NG:
-```bash
-sed -i 's/qemu_version: 4.1.0/qemu_version: 8.2.1/' /opt/unetlab/html/templates/intel/catc8k.yml
-sed -i 's/qemu_version: 2.4.0/qemu_version: 8.2.1/' /opt/unetlab/html/templates/amd/c8000v.yml
-```
-
-Los nodos Edge existentes tuvieron que ser **eliminados y recreados** en la topología de EVE-NG para que tomaran el nuevo template con qemu-8.2.1.
-
-#### Boot y controller mode
-
-Con la nueva imagen, los Edges bootearon correctamente en modo IOS-XE autónomo. Se activó el controller mode:
+La imagen booteó correctamente en modo autónomo. Se activó controller mode con `controller-mode enable`. Verificación exitosa:
 
 ```
-Router# controller-mode enable
-```
-
-El router se reinicia y vuelve en controller mode (SD-WAN). Verificación:
-
-```
-Router# show version | include operating
 Router operating mode: Controller-Managed
-
-Router# show sdwan system status
 Personality:             vEdge
-Model name:              C8000V
 Device role:             cEdge-SDWAN
 Controller Compatibility: 20.15
 ```
 
-#### Problema de compatibilidad de versiones
+Sin embargo, la configuración SD-WAN aplicada vía `config-transaction` no persistía — `show sdwan running-config system` solo mostraba `admin-tech-on-failure` después del commit.
 
-La configuración SD-WAN aplicada vía `config-transaction` no persistía. El `show sdwan running-config` no mostraba system-ip, organization-name ni interfaces SD-WAN después del commit.
+#### Imagen 3: catc8k-17.12.04a — Mismo problema de config
 
-La causa probable es la **incompatibilidad de versiones**: los control components corren versión 20.18.1 mientras que el Edge reporta `Controller Compatibility: 20.15`. Se necesita una imagen Edge cuya compatibilidad sea 20.18.x o una versión cercana verificada como compatible.
+Se descargó `c8000v-universalk9_16G_serial.17.12.04a.qcow2` (Dublin, versión MD estable). Controller Compatibility: 20.12.
 
-> **Estado actual:** Onboarding de WAN Edges bloqueado hasta obtener una imagen C8000v con versión de controller compatibility compatible con vManage 20.18.1.
+El mismo problema: la configuración SD-WAN no persiste después del commit. Se intentaron múltiples sintaxis de CLI (`sdwan system`, `system` directo, `vpn 0`) sin éxito.
 
-### 6.9 Próximos pasos para desbloquear
+#### Intento de bootstrap file
 
-1. Descargar imagen C8000v versión 17.12.x o 17.09.x del portal de Cisco (SD-WAN compatible)
-2. Verificar que el `Controller Compatibility` coincida con 20.18.x
-3. Repetir el proceso de boot, controller-mode enable, y bootstrap SD-WAN
+Se detectó que el Edge reportaba `Bootstrap file doesn't exist` al ejecutar `request platform software sdwan config reset`. Se intentó crear el bootstrap file (`ciscosdwan_cloud_init.cfg`) en bootflash por múltiples vías:
+
+1. **Desde CLI**: `tclsh` bloqueado en controller mode, `vshell` no disponible, `request platform software system shell` requiere consent-token
+2. **Montando el disco QCOW2 desde EVE-NG**: Se usó `qemu-nbd` para montar la partición bootflash y escribir el archivo directamente. El archivo se creó correctamente pero el Edge no lo leyó al bootear.
+
+#### Intento de registro en vManage via WAN Edge List
+
+Se intentó registrar los Edges en vManage subiendo un CSV con los chassis-numbers:
+
+| Edge | Chassis Number |
+|------|---------------|
+| Edge-1 | C8K-dcc98548-d577-453e-9095-c0f908c417cc |
+| Edge-2 | C8K-356a0162-aa0d-4e5b-9945-0f36ad04e002 |
+
+El upload falló con el error: **"Virtual Platform is not allowed in CSV Upload"**. vManage 20.18.1 no permite registrar plataformas virtuales (C8000V) vía CSV — requiere Smart Account o PnP Connect, que no están disponibles en un lab offline.
+
+El workflow "Quick Connect" con la opción "Skip for now" tampoco descubrió los Edges porque no están en el inventario de vManage.
+
+#### Análisis del bloqueo
+
+La causa raíz del problema de onboarding de WAN Edges C8000v en un lab offline es la combinación de:
+
+1. **Las imágenes C8000v en controller mode no aceptan configuración SD-WAN por CLI interactiva** — están diseñadas para recibir configuración desde vManage vía templates o desde un bootstrap file generado por PnP
+2. **vManage 20.18.1 no permite registrar C8000V virtuales via CSV** — requiere Smart Account o PnP Connect
+3. **Sin registro en vManage, no se pueden generar certificados ni empujar configuración a los Edges**
+
+> **Estado actual:** Onboarding de WAN Edges bloqueado. El control plane está 100% operativo. Para desbloquear se necesita: (a) imágenes vEdge cloud (Viptela nativas) que aceptan configuración por CLI directa, (b) acceso a Smart Account para registrar los C8000v, o (c) uso de la API REST de vManage para agregar los dispositivos al inventario programáticamente.
+
+### 6.9 Alternativas identificadas para desbloquear
+
+| Alternativa | Descripción | Viabilidad |
+|-------------|-------------|------------|
+| Imágenes vEdge cloud | Dispositivos Viptela nativos, CLI directa como vBond/vSmart | Requiere obtener imagen `viptela-edge-*.qcow2` |
+| Smart Account | Registrar C8000v via Cisco Smart Account + PnP | Requiere cuenta Cisco con Smart Licensing activo |
+| API REST de vManage | Agregar dispositivos al inventario via `POST /dataservice/system/device` | Viable si la API lo permite sin Smart Account |
+| Versiones anteriores de vManage | Usar vManage 20.9.x o anterior que puede permitir CSV upload de plataformas virtuales | Requiere redesplegar los control components |
 
 ---
 
@@ -624,13 +628,39 @@ sed -i 's/qemu_version: 4.1.0/qemu_version: 8.2.1/' /opt/unetlab/html/templates/
 ```
 Después se eliminaron los nodos Edge de la topología de EVE-NG y se recrearon para que tomaran el nuevo template.
 
-### Problema 8: Configuración SD-WAN no persiste en WAN Edge 17.15.04c
+### Problema 8: Configuración SD-WAN no persiste en WAN Edge C8000v (17.15 y 17.12)
 
-**Síntoma:** Después de aplicar la configuración SD-WAN via `config-transaction` y hacer `commit`, el `show sdwan running-config` no mostraba system-ip, organization-name ni interfaces configuradas. El `show sdwan control local-properties` mostraba system-ip 0.0.0.0 y organization-name vacío.
+**Síntoma:** Después de aplicar la configuración SD-WAN via `config-transaction` y hacer `commit`, el `show sdwan running-config` no mostraba system-ip, organization-name ni interfaces configuradas. El `show sdwan control local-properties` mostraba system-ip 0.0.0.0 y organization-name vacío. El commit no reportaba errores.
 
-**Causa raíz (probable):** Incompatibilidad de versiones entre los control components (vManage 20.18.1) y la imagen del Edge (IOS-XE 17.15.04c con Controller Compatibility 20.15). La diferencia de versiones puede causar que la configuración SD-WAN no se procese correctamente.
+**Intentos realizados:**
+- Sintaxis `sdwan system` dentro de `config-transaction`
+- Sintaxis `system` directa (estilo Viptela) dentro de `config-transaction`
+- Sintaxis mixta (IOS-XE para interfaces + sdwan para system)
+- Tres imágenes diferentes: 17.18.01a, 17.15.04c, 17.12.04a
 
-**Estado:** Sin resolver. Se necesita una imagen C8000v con Controller Compatibility 20.18.x.
+**Causa raíz:** Las imágenes C8000v en controller mode requieren un bootstrap file previo (`ciscosdwan_cloud_init.cfg`) o provisión desde vManage para inicializar el datastore de SD-WAN. Sin esta inicialización, el proceso confd/vdaemon no procesa la configuración aplicada por CLI.
+
+**Estado:** Sin resolver. El problema es arquitectónico — no es de versión ni de sintaxis.
+
+### Problema 9: Bootstrap file inyectado manualmente no es leído por el Edge
+
+**Síntoma:** Se creó el archivo `ciscosdwan_cloud_init.cfg` directamente en la partición bootflash del disco QCOW2 usando `qemu-nbd` desde el host EVE-NG. Al bootear, el Edge no leyó el archivo y `show sdwan running-config system` seguía vacío.
+
+**Diagnóstico:** El archivo existía en bootflash (confirmado montando el disco), pero el proceso de boot no lo procesaba. El comando `request platform software sdwan bootstrap-config save` generaba el archivo pero tampoco se aplicaba al reiniciar.
+
+**Causa raíz (probable):** El bootstrap file debe tener un formato específico y/o debe ser generado por vManage o PnP Connect. Un archivo creado manualmente puede no tener las cabeceras o el formato que el proceso de inicialización de SD-WAN espera.
+
+**Estado:** Sin resolver.
+
+### Problema 10: vManage no permite registrar plataformas virtuales via CSV
+
+**Síntoma:** Al subir el CSV con los chassis-numbers de los C8000V, vManage mostró: `Virtual Platform is not allowed in CSV Upload`.
+
+**Causa raíz:** vManage 20.18.1 tiene una restricción que impide agregar plataformas virtuales (C8000V) al inventario via CSV upload. El registro de dispositivos virtuales requiere Smart Account + PnP Connect o sincronización con Cisco cloud.
+
+**Impacto:** Sin registro en el inventario de vManage, no se pueden generar certificados para los Edges ni empujar configuración vía templates. Esto bloquea completamente el onboarding en un lab offline.
+
+**Estado:** Sin resolver. Se requiere Smart Account, imágenes vEdge nativas, o uso de la API REST de vManage.
 
 ---
 
@@ -656,6 +686,14 @@ Después se eliminaron los nodos Edge de la topología de EVE-NG y se recrearon 
 
 10. **La compatibilidad de versiones entre controladores y Edges es crítica.** No asumir que cualquier versión de IOS-XE funciona con cualquier versión de vManage. El campo `Controller Compatibility` en el `show sdwan system status` del Edge debe coincidir con la versión major del controlador. Verificar la matriz de compatibilidad de Cisco antes de desplegar.
 
+11. **Los C8000v en controller mode no aceptan configuración SD-WAN por CLI interactiva de la misma forma que los dispositivos Viptela.** Los cEdges requieren un bootstrap file o provisión desde vManage. Esto es una diferencia fundamental con vBond/vSmart/vEdge donde la CLI funciona directamente.
+
+12. **vManage 20.18.1 no permite registrar plataformas virtuales (C8000V) via CSV upload.** En labs offline sin Smart Account, esto bloquea el onboarding. Las alternativas son: imágenes vEdge cloud, API REST de vManage, o versiones anteriores de vManage que no tengan esta restricción.
+
+13. **El GRUB de las imágenes C8000v ofrece dos opciones de boot:** `packages.conf` (boot modular, producción) y `GOLDEN IMAGE` (imagen monolítica de recovery). Siempre bootear con `packages.conf` excepto en escenarios de recovery.
+
+14. **El comando `controller-mode enable` en C8000v borra NVRAM y toda la configuración.** Es un proceso destructivo que reinicia el router. Debe ejecutarse una sola vez y no se puede revertir sin reinstalar la imagen.
+
 ---
 
 ## 11. Mejores prácticas
@@ -675,14 +713,14 @@ Después se eliminaron los nodos Edge de la topología de EVE-NG y se recrearon 
 
 ## 12. Próximos pasos
 
-| Paso | Descripción |
-|------|-------------|
-| Obtener imagen Edge compatible | Descargar C8000v con Controller Compatibility 20.18.x |
-| Onboarding Edge-1 | Bootstrap, certificado y registro en el fabric |
-| Onboarding Edge-2 | Bootstrap, certificado y registro en el fabric |
-| Validación OMP | Verificar sesiones OMP y propagación de rutas |
-| Validación data plane | Verificar túneles IPsec/BFD entre Edges |
-| Ping end-to-end | Conectividad 192.168.10.0/24 a 192.168.20.0/24 |
+| Prioridad | Paso | Descripción |
+|-----------|------|-------------|
+| 1 | Resolver onboarding de Edges | Obtener imágenes vEdge cloud, usar API REST de vManage, o configurar Smart Account |
+| 2 | Onboarding Edge-1 y Edge-2 | Bootstrap, certificados y registro en el fabric |
+| 3 | Validación OMP | Verificar sesiones OMP y propagación de rutas |
+| 4 | Validación data plane | Verificar túneles IPsec/BFD entre Edges |
+| 5 | Ping end-to-end | Conectividad 192.168.10.0/24 a 192.168.20.0/24 |
+| 6 | Documentación final | Completar resultados, actualizar hipótesis validadas |
 
 ## 13. Próximos laboratorios
 
