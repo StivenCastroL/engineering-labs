@@ -10,7 +10,7 @@
 | Nivel | Intermedio |
 | Entorno | EVE-NG |
 | Fecha inicio | 2026-03-14 |
-| Estado | En progreso — Control plane operativo, pendiente onboarding de WAN Edges |
+| Estado | En progreso — Control plane operativo, onboarding de WAN Edges bloqueado por incompatibilidad de imagen |
 
 ---
 
@@ -438,13 +438,70 @@ vbond   dtls 1.1.1.2         0          0      10.10.10.2          12346 up    0
 
 **Hipótesis #1 validada:** Los control connections DTLS se establecieron automáticamente entre los control components.
 
-### 6.8 WAN Edge onboarding — Edge-1
+### 6.8 WAN Edge onboarding (bloqueado — incompatibilidad de imagen)
 
-<!-- TODO: Pendiente -->
+#### Imagen original: catc8k-17.18.01a
 
-### 6.9 WAN Edge onboarding — Edge-2
+La primera imagen desplegada para los WAN Edges fue `catc8k-17.18.01a`. Los nodos no booteaban — la consola se quedaba en blanco y el proceso QEMU consumía 99% CPU con solo 65 MB de RAM (indicando que la VM nunca arrancaba el OS). El problema era doble:
 
-<!-- TODO: Pendiente -->
+1. El template de EVE-NG asignaba **qemu-4.1.0** a los nodos catc8k
+2. La imagen 17.18 no era compatible con esa versión de QEMU
+
+Se probó con qemu-8.2.1 manualmente y la imagen mostraba `Booting from Hard Disk...` pero no avanzaba — la imagen en sí era incompatible.
+
+#### Imagen reemplazada: catc8k-17.15.04c
+
+Se descargó la imagen `c8000v-universalk9_16G_serial.17.15.04c.qcow2` desde el portal de Cisco (variante Serial, 16G, no-EFI, QCOW2 nativo para KVM).
+
+Para que EVE-NG la reconociera:
+```bash
+mkdir -p /opt/unetlab/addons/qemu/catc8k-17.15.04c
+mv c8000v-universalk9_16G_serial.17.15.04c.qcow2 /opt/unetlab/addons/qemu/catc8k-17.15.04c/virtioa.qcow2
+/opt/unetlab/wrappers/unl_wrapper -a fixpermissions
+```
+
+Adicionalmente, fue necesario actualizar la versión de QEMU en los templates de EVE-NG:
+```bash
+sed -i 's/qemu_version: 4.1.0/qemu_version: 8.2.1/' /opt/unetlab/html/templates/intel/catc8k.yml
+sed -i 's/qemu_version: 2.4.0/qemu_version: 8.2.1/' /opt/unetlab/html/templates/amd/c8000v.yml
+```
+
+Los nodos Edge existentes tuvieron que ser **eliminados y recreados** en la topología de EVE-NG para que tomaran el nuevo template con qemu-8.2.1.
+
+#### Boot y controller mode
+
+Con la nueva imagen, los Edges bootearon correctamente en modo IOS-XE autónomo. Se activó el controller mode:
+
+```
+Router# controller-mode enable
+```
+
+El router se reinicia y vuelve en controller mode (SD-WAN). Verificación:
+
+```
+Router# show version | include operating
+Router operating mode: Controller-Managed
+
+Router# show sdwan system status
+Personality:             vEdge
+Model name:              C8000V
+Device role:             cEdge-SDWAN
+Controller Compatibility: 20.15
+```
+
+#### Problema de compatibilidad de versiones
+
+La configuración SD-WAN aplicada vía `config-transaction` no persistía. El `show sdwan running-config` no mostraba system-ip, organization-name ni interfaces SD-WAN después del commit.
+
+La causa probable es la **incompatibilidad de versiones**: los control components corren versión 20.18.1 mientras que el Edge reporta `Controller Compatibility: 20.15`. Se necesita una imagen Edge cuya compatibilidad sea 20.18.x o una versión cercana verificada como compatible.
+
+> **Estado actual:** Onboarding de WAN Edges bloqueado hasta obtener una imagen C8000v con versión de controller compatibility compatible con vManage 20.18.1.
+
+### 6.9 Próximos pasos para desbloquear
+
+1. Descargar imagen C8000v versión 17.12.x o 17.09.x del portal de Cisco (SD-WAN compatible)
+2. Verificar que el `Controller Compatibility` coincida con 20.18.x
+3. Repetir el proceso de boot, controller-mode enable, y bootstrap SD-WAN
 
 ---
 
@@ -543,6 +600,38 @@ request root-cert-chain install /home/admin/root-ca.pem
 
 **Solución:** Se reconfiguró el bootstrap completo de vBond y se verificó el commit.
 
+### Problema 6: Imagen C8000v 17.18.01a no booteaba en EVE-NG
+
+**Síntoma:** Los nodos Edge se encendían pero la consola quedaba vacía. El proceso QEMU consumía 99% CPU con solo 65 MB de RAM. Al testear manualmente, la consola mostraba `Booting from Hard Disk...` y no avanzaba.
+
+**Diagnóstico:** Se probó con múltiples versiones de QEMU (4.1.0, 8.2.1) y con diferentes tipos de disco (virtio, ide). La imagen tenía particiones válidas (`qemu-img check` limpio, `virt-filesystems` mostraba particiones IOS-XE correctas) pero no booteaba.
+
+**Causa raíz:** La imagen `catc8k-17.18.01a` no era compatible con el entorno QEMU/KVM de EVE-NG. Posiblemente era una imagen para una plataforma de virtualización diferente (ESXi) o tenía un bootloader incompatible.
+
+**Solución:** Se descargó una imagen diferente desde el portal de Cisco: `c8000v-universalk9_16G_serial.17.15.04c.qcow2` (variante Serial, 16G, no-EFI, QCOW2 nativo para KVM). Esta imagen booteó correctamente.
+
+### Problema 7: EVE-NG asignaba versión incorrecta de QEMU a los Edges
+
+**Síntoma:** Incluso con la nueva imagen, los Edges no booteaban en EVE-NG. Manualmente con qemu-8.2.1 sí funcionaban.
+
+**Diagnóstico:** `ps aux | grep "D 4" | grep -o "qemu-[0-9.]*"` mostraba que EVE-NG usaba `qemu-4.1.0` para los Edges.
+
+**Causa raíz:** El template `catc8k.yml` de EVE-NG tenía `qemu_version: 4.1.0` hardcodeado. Cambiar el template no era suficiente para los nodos ya existentes — los nodos guardaban la configuración de QEMU de cuando fueron creados.
+
+**Solución:** Se actualizó el template y se **eliminaron y recrearon** los nodos Edge en la topología:
+```bash
+sed -i 's/qemu_version: 4.1.0/qemu_version: 8.2.1/' /opt/unetlab/html/templates/intel/catc8k.yml
+```
+Después se eliminaron los nodos Edge de la topología de EVE-NG y se recrearon para que tomaran el nuevo template.
+
+### Problema 8: Configuración SD-WAN no persiste en WAN Edge 17.15.04c
+
+**Síntoma:** Después de aplicar la configuración SD-WAN via `config-transaction` y hacer `commit`, el `show sdwan running-config` no mostraba system-ip, organization-name ni interfaces configuradas. El `show sdwan control local-properties` mostraba system-ip 0.0.0.0 y organization-name vacío.
+
+**Causa raíz (probable):** Incompatibilidad de versiones entre los control components (vManage 20.18.1) y la imagen del Edge (IOS-XE 17.15.04c con Controller Compatibility 20.15). La diferencia de versiones puede causar que la configuración SD-WAN no se procese correctamente.
+
+**Estado:** Sin resolver. Se necesita una imagen C8000v con Controller Compatibility 20.18.x.
+
 ---
 
 ## 10. Lecciones aprendidas
@@ -561,6 +650,12 @@ request root-cert-chain install /home/admin/root-ca.pem
 
 7. **Los "Common control component settings" son un prerequisito en vManage 20.x.** Antes de poder agregar control components via GUI, estos settings deben estar configurados (aunque sea con valores por defecto).
 
+8. **Las imágenes C8000v para EVE-NG deben ser variante Serial, QCOW2, no-EFI.** Al descargar desde el portal de Cisco, seleccionar `c8000v-universalk9_XG_serial.VERSION.qcow2`. Las variantes VGA, EFI, ISO y OVA no son compatibles con EVE-NG o requieren configuración adicional.
+
+9. **Los templates de EVE-NG guardan la versión de QEMU.** Si se actualiza la versión de QEMU en el template YAML, los nodos existentes no se actualizan — deben eliminarse y recrearse para tomar la nueva configuración.
+
+10. **La compatibilidad de versiones entre controladores y Edges es crítica.** No asumir que cualquier versión de IOS-XE funciona con cualquier versión de vManage. El campo `Controller Compatibility` en el `show sdwan system status` del Edge debe coincidir con la versión major del controlador. Verificar la matriz de compatibilidad de Cisco antes de desplegar.
+
 ---
 
 ## 11. Mejores prácticas
@@ -572,6 +667,9 @@ request root-cert-chain install /home/admin/root-ca.pem
 - Mantener consistencia estricta en `organization-name` entre todos los componentes
 - Seguir siempre la secuencia de despliegue: Manager > Validator > Controller > Edges
 - Monitorear recursos del host EVE-NG durante el boot de vManage (`free -h`, `top`)
+- Para imágenes C8000v en EVE-NG: usar variante Serial + QCOW2 + no-EFI, y verificar que el template YAML apunte a una versión de QEMU 8.x o superior
+- Verificar la matriz de compatibilidad de versiones de Cisco antes de combinar diferentes versiones de controladores y Edges
+- Los WAN Edges C8000v requieren mínimo 8 GB de RAM para bootear correctamente en controller mode
 
 ---
 
@@ -579,6 +677,7 @@ request root-cert-chain install /home/admin/root-ca.pem
 
 | Paso | Descripción |
 |------|-------------|
+| Obtener imagen Edge compatible | Descargar C8000v con Controller Compatibility 20.18.x |
 | Onboarding Edge-1 | Bootstrap, certificado y registro en el fabric |
 | Onboarding Edge-2 | Bootstrap, certificado y registro en el fabric |
 | Validación OMP | Verificar sesiones OMP y propagación de rutas |
